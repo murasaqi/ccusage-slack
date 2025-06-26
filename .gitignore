@@ -1,6 +1,13 @@
 node_modules
 .env
 .claude
-collection.json
+collection.json  # TEMP: keep for one release cycle
+data/collection.json
 .gacha-request.json
 .gacha-response.json
+.gacha-prompt.txt
+.gacha-prompt.md
+
+# ガチャ結果
+messages/gacha-results/
+messages/custom/

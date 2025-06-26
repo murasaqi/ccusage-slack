@@ -4,9 +4,16 @@
   "description": "Update Slack profile with Claude usage cost savings",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js",
-    "gacha": "node gacha-cli.js"
+    "start": "node scripts/start-slack.js",
+    "slack": "node scripts/start-slack.js",
+    "gacha": "node scripts/start-gacha.js",
+    "gacha:handler": "node src/gacha/handler.js",
+    "gacha:handler:watch": "node src/gacha/handler.js --watch",
+    "gacha:handler:test": "node src/gacha/handler.js --test",
+    "gacha:handler:config": "node src/gacha/handler.js --config",
+    "message:list": "node scripts/message-manager.js list",
+    "message:current": "node scripts/message-manager.js current",
+    "message:use": "node scripts/message-manager.js use"
   },
   "dependencies": {
     "axios": "^1.6.2",

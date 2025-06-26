@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const generatorFactory = require('./lib/generator-factory');
 
 // ANSI color codes for terminal
 const colors = {
@@ -294,7 +295,7 @@ async function showRarityAnimation(rarity) {
 
 // コレクション管理
 function loadCollection() {
-  const collectionPath = path.join(__dirname, 'collection.json');
+  const collectionPath = path.join(__dirname, '../../data/collection.json');
   if (fs.existsSync(collectionPath)) {
     return JSON.parse(fs.readFileSync(collectionPath, 'utf8'));
   }
@@ -309,7 +310,7 @@ function loadCollection() {
 }
 
 function saveCollection(collection) {
-  const collectionPath = path.join(__dirname, 'collection.json');
+  const collectionPath = path.join(__dirname, '../../data/collection.json');
   fs.writeFileSync(collectionPath, JSON.stringify(collection, null, 2));
 }
 
@@ -374,20 +375,8 @@ function getThemeName(category, rarity) {
   return themes[category.id][rarity.id] || 'スペシャルエディション';
 }
 
-// リクエストファイル作成
-async function createGachaRequest(category, rarity) {
-  const request = {
-    category: category.id,
-    categoryName: category.name,
-    rarity: rarity.id,
-    rarityName: rarity.name,
-    timestamp: new Date().toISOString(),
-    themeName: getThemeName(category, rarity)
-  };
-  
-  const requestPath = path.join(__dirname, '.gacha-request.json');
-  fs.writeFileSync(requestPath, JSON.stringify(request, null, 2));
-  
+// AIでコンテンツを生成
+async function generateContent(category, rarity) {
   console.log('\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('\n');
@@ -397,68 +386,67 @@ async function createGachaRequest(category, rarity) {
   
   console.log(`    カテゴリ: ${category.name}`);
   console.log(`    レアリティ: ${rarity.stars} ${rarity.name}`);
-  console.log(`    テーマ: ${request.themeName}`);
+  console.log(`    テーマ: ${getThemeName(category, rarity)}`);
   
   console.log('\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-}
-
-// レスポンス待機
-async function waitForResponse(timeout = 30000) {
-  const responsePath = path.join(__dirname, '.gacha-response.json');
-  const startTime = Date.now();
-  
-  // 既存のレスポンスファイルを削除
-  if (fs.existsSync(responsePath)) {
-    fs.unlinkSync(responsePath);
-  }
   
   console.log('\n');
-  printCenter('🤖 Claude Codeが内容を生成中...');
+  const config = generatorFactory.getConfig();
+  printCenter(`🤖 ${config.generator === 'claude' ? 'Claude' : config.generator === 'gemini' ? 'Gemini' : 'AI'}が内容を生成中...`);
   console.log('\n');
   
-  // シンプルな待機演出
+  // 生成中の演出
   const dots = ['   ', '.  ', '.. ', '...'];
   let dotIndex = 0;
+  let animationInterval;
   
-  printCenter('考え中');
-  
-  while (Date.now() - startTime < timeout) {
-    if (fs.existsSync(responsePath)) {
-      try {
-        const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
-        console.log('\n');
-        printCenter(`${colors.green}✅ 生成完了！${colors.reset}`);
-        await sleep(500);
-        return response;
-      } catch (e) {
-        // JSONパースエラーの場合は待機継続
-      }
-    }
-    
-    // ドットアニメーション
+  const startAnimation = () => {
     process.stdout.write('\r');
     printCenter(`考え中${dots[dotIndex % 4]}`);
     dotIndex++;
-    
-    await sleep(500);
-  }
+  };
   
-  console.log('\n');
-  printCenter(`${colors.red}❌ タイムアウトしました${colors.reset}`);
-  throw new Error('Claude Codeからの応答がありません');
+  // アニメーション開始
+  startAnimation();
+  animationInterval = setInterval(startAnimation, 500);
+  
+  try {
+    // ジェネレーターを取得して生成
+    const generator = generatorFactory.create();
+    const messageData = await generator.generate(category, rarity);
+    
+    // アニメーション停止
+    clearInterval(animationInterval);
+    console.log('\n');
+    printCenter(`${colors.green}✅ 生成完了！${colors.reset}`);
+    await sleep(500);
+    
+    return messageData;
+    
+  } catch (error) {
+    // アニメーション停止
+    clearInterval(animationInterval);
+    console.log('\n');
+    
+    // エラーハンドリング
+    console.error(`${colors.red}❌ 生成エラー: ${error.message}${colors.reset}`);
+    
+    
+    throw error;
+  }
 }
 
 // 結果保存
 function saveResult(category, rarity, messageData) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
   const fileName = `${category.id}_${rarity.id}_${timestamp}.json`;
-  const filePath = path.join(__dirname, 'gacha-results', fileName);
+  const filePath = path.join(__dirname, '../../messages/gacha-results', fileName);
   
   // gacha-resultsディレクトリがなければ作成
-  const resultsDir = path.join(__dirname, 'gacha-results');
+  const resultsDir = path.join(__dirname, '../../messages/gacha-results');
   if (!fs.existsSync(resultsDir)) {
-    fs.mkdirSync(resultsDir);
+    fs.mkdirSync(resultsDir, { recursive: true });
   }
   
   fs.writeFileSync(filePath, JSON.stringify(messageData, null, 2));
@@ -476,11 +464,8 @@ async function runGacha() {
     const category = weightedRandom(categories);
     const rarity = weightedRandom(rarities);
     
-    // リクエスト作成
-    await createGachaRequest(category, rarity);
-    
-    // Claude Codeからの応答待機
-    const messageData = await waitForResponse();
+    // AIでコンテンツを生成
+    const messageData = await generateContent(category, rarity);
     
     // レアリティ演出
     await showRarityAnimation(rarity);
@@ -512,7 +497,7 @@ async function runGacha() {
     console.log('\n');
     
     printCenter(`${colors.green}💾 ファイルを保存しました${colors.reset}`);
-    console.log(`    📁 gacha-results/${fileName}`);
+    console.log(`    📁 messages/gacha-results/${fileName}`);
     console.log('\n');
     
     return true;
@@ -585,20 +570,28 @@ function showCollection() {
   }
 }
 
-// ファイル適用機能
+// ファイル適用機能（Slack設定を更新）
 function applyToMessages(fileName) {
-  const sourcePath = path.join(__dirname, 'gacha-results', fileName);
-  const targetPath = path.join(__dirname, 'messages.json');
+  // gacha-results/を含むパスから、ファイル名部分だけを抽出
+  const baseName = path.basename(fileName, '.json');
+  const messageFile = fileName.includes('/') ? fileName.replace('.json', '') : `gacha-results/${baseName}`;
   
-  if (!fs.existsSync(sourcePath)) {
-    console.error(`${colors.red}❌ ファイルが見つかりません: ${fileName}${colors.reset}`);
+  // 実際のファイルが存在するか確認
+  const fullPath = path.join(__dirname, '../../messages/', messageFile + '.json');
+  if (!fs.existsSync(fullPath)) {
+    console.error(`${colors.red}❌ ファイルが見つかりません: ${fullPath}${colors.reset}`);
     return false;
   }
   
   try {
-    const content = fs.readFileSync(sourcePath, 'utf8');
-    fs.writeFileSync(targetPath, content);
-    console.log(`${colors.green}✅ ${fileName} を messages.json に適用しました！${colors.reset}`);
+    // Slack設定を更新
+    const slackConfigPath = path.join(__dirname, '../../config/slack.json');
+    const slackConfig = JSON.parse(fs.readFileSync(slackConfigPath, 'utf8'));
+    slackConfig.messageFile = messageFile;
+    fs.writeFileSync(slackConfigPath, JSON.stringify(slackConfig, null, 2));
+    
+    console.log(`${colors.green}✅ Slackメッセージを ${messageFile} に切り替えました！${colors.reset}`);
+    console.log(`${colors.cyan}💡 Slack Updaterを再起動すると新しいメッセージが適用されます${colors.reset}`);
     return true;
   } catch (error) {
     console.error(`${colors.red}❌ エラー: ${error.message}${colors.reset}`);
@@ -695,9 +688,9 @@ async function main() {
       showCollection();
     } else {
       console.log('使い方:');
-      console.log('  node gacha.js              - ガチャを開始');
-      console.log('  node gacha.js collection   - コレクション確認');
-      console.log('  node gacha.js --apply <ファイル名> - 結果を適用');
+      console.log('  node cli.js              - ガチャを開始');
+      console.log('  node cli.js collection   - コレクション確認');
+      console.log('  node cli.js --apply <ファイル名> - 結果をSlackメッセージに設定');
     }
   } else {
     await showMainMenu();

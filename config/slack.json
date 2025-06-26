@@ -1,0 +1,5 @@
+{
+  "messageFile": "default",
+  "autoReload": true,
+  "description": "使用するメッセージファイルを指定します。messages/ディレクトリ内のファイル名（拡張子なし）を指定してください。"
+}

@@ -1,43 +1,71 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { exec } = require('child_process');
 const axios = require('axios');
 const cron = require('node-cron');
 const fs = require('fs');
-const path = require('path');
 
 const CLAUDE_MAX_COST = 200; // $200 Claude Max subscription
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 
+// Load Slack configuration
+let slackConfig = {};
+try {
+  const slackConfigPath = path.join(__dirname, '../../config/slack.json');
+  slackConfig = JSON.parse(fs.readFileSync(slackConfigPath, 'utf8'));
+  console.log('✅ Loaded Slack configuration');
+} catch (error) {
+  console.log('⚠️  Using default configuration');
+  slackConfig = { messageFile: 'default' };
+}
+
 // Load messages configuration
-const messagesPath = path.join(__dirname, 'messages.json');
+const messageFile = slackConfig.messageFile || 'default';
+const messagesPath = path.join(__dirname, '../../messages/', messageFile + '.json');
 let messagesConfig = {};
 
-// Load and validate messages configuration
-try {
-  messagesConfig = JSON.parse(fs.readFileSync(messagesPath, 'utf8'));
-  console.log('✅ Loaded messages configuration');
-  
-  // Validate required fields
-  if (!messagesConfig.comparisons || !Array.isArray(messagesConfig.comparisons) || messagesConfig.comparisons.length === 0) {
-    throw new Error('messages.json must contain a non-empty "comparisons" array');
+// Function to load and validate messages
+function loadMessages() {
+  try {
+    // Reload Slack config to check for message file changes
+    const slackConfigPath = path.join(__dirname, '../../config/slack.json');
+    const currentSlackConfig = JSON.parse(fs.readFileSync(slackConfigPath, 'utf8'));
+    const currentMessageFile = currentSlackConfig.messageFile || 'default';
+    const currentMessagesPath = path.join(__dirname, '../../messages/', currentMessageFile + '.json');
+    
+    const newMessagesConfig = JSON.parse(fs.readFileSync(currentMessagesPath, 'utf8'));
+    console.log(`✅ Loaded messages configuration from: ${currentMessageFile}.json`);
+    
+    // Validate required fields
+    if (!newMessagesConfig.comparisons || !Array.isArray(newMessagesConfig.comparisons) || newMessagesConfig.comparisons.length === 0) {
+      throw new Error('messages.json must contain a non-empty "comparisons" array');
+    }
+    if (!newMessagesConfig.lowUsageMessages || !Array.isArray(newMessagesConfig.lowUsageMessages) || newMessagesConfig.lowUsageMessages.length === 0) {
+      throw new Error('messages.json must contain a non-empty "lowUsageMessages" array');
+    }
+    if (!newMessagesConfig.templates || typeof newMessagesConfig.templates !== 'object') {
+      throw new Error('messages.json must contain a "templates" object');
+    }
+    if (!newMessagesConfig.templates.savingsComparison || !newMessagesConfig.templates.buffetMode || !newMessagesConfig.templates.lowUsage) {
+      throw new Error('messages.json templates must contain "savingsComparison", "buffetMode", and "lowUsage" fields');
+    }
+    if (!newMessagesConfig.thresholds || typeof newMessagesConfig.thresholds !== 'object') {
+      throw new Error('messages.json must contain a "thresholds" object');
+    }
+    if (typeof newMessagesConfig.thresholds.savingsComparisonMin !== 'number' || typeof newMessagesConfig.thresholds.buffetModeMin !== 'number') {
+      throw new Error('messages.json thresholds must contain numeric "savingsComparisonMin" and "buffetModeMin" fields');
+    }
+    
+    messagesConfig = newMessagesConfig;
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to load or validate messages:', error.message);
+    return false;
   }
-  if (!messagesConfig.lowUsageMessages || !Array.isArray(messagesConfig.lowUsageMessages) || messagesConfig.lowUsageMessages.length === 0) {
-    throw new Error('messages.json must contain a non-empty "lowUsageMessages" array');
-  }
-  if (!messagesConfig.templates || typeof messagesConfig.templates !== 'object') {
-    throw new Error('messages.json must contain a "templates" object');
-  }
-  if (!messagesConfig.templates.savingsComparison || !messagesConfig.templates.buffetMode || !messagesConfig.templates.lowUsage) {
-    throw new Error('messages.json templates must contain "savingsComparison", "buffetMode", and "lowUsage" fields');
-  }
-  if (!messagesConfig.thresholds || typeof messagesConfig.thresholds !== 'object') {
-    throw new Error('messages.json must contain a "thresholds" object');
-  }
-  if (typeof messagesConfig.thresholds.savingsComparisonMin !== 'number' || typeof messagesConfig.thresholds.buffetModeMin !== 'number') {
-    throw new Error('messages.json thresholds must contain numeric "savingsComparisonMin" and "buffetModeMin" fields');
-  }
-} catch (error) {
-  console.error('❌ Failed to load or validate messages.json:', error.message);
+}
+
+// Initial load
+if (!loadMessages()) {
   process.exit(1);
 }
 
@@ -176,6 +204,20 @@ async function updateSlackProfile(totalCost, month) {
 
 async function updateCostInfo() {
   try {
+    // Check if we should reload messages
+    if (slackConfig.autoReload) {
+      const reloaded = loadMessages();
+      if (reloaded) {
+        // Reload the Slack config too
+        try {
+          const slackConfigPath = path.join(__dirname, '../../config/slack.json');
+          slackConfig = JSON.parse(fs.readFileSync(slackConfigPath, 'utf8'));
+        } catch (e) {
+          // Keep existing config if reload fails
+        }
+      }
+    }
+    
     console.log('🔄 Fetching Claude usage data...');
     const data = await getCCUsage();
     const { totalCost, month } = getLatestMonthCost(data);

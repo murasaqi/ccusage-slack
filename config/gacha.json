@@ -1,0 +1,11 @@
+{
+  "generator": "claude",
+  "claude": {
+    "command": "claude",
+    "timeout": 30000
+  },
+  "gemini": {
+    "command": "gemini",
+    "timeout": 30000
+  }
+}
