@@ -1,3 +1,6 @@
 node_modules
 .env
 .claude
+collection.json
+.gacha-request.json
+.gacha-response.json
