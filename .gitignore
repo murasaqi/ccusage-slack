@@ -11,3 +11,7 @@ data/collection.json
 # ガチャ結果
 messages/gacha-results/
 messages/custom/
+
+# Google認証
+data/.google-token.json
+data/.google-credentials.json

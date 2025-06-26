@@ -13,13 +13,18 @@
     "gacha:handler:config": "node src/gacha/handler.js --config",
     "message:list": "node scripts/message-manager.js list",
     "message:current": "node scripts/message-manager.js current",
-    "message:use": "node scripts/message-manager.js use"
+    "message:use": "node scripts/message-manager.js use",
+    "setup:google": "node scripts/setup-google.js",
+    "ranking": "node scripts/google-ranking.js"
   },
   "dependencies": {
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
     "node-cron": "^3.0.3",
-    "sharp": "^0.34.2"
+    "sharp": "^0.34.2",
+    "googleapis": "^128.0.0",
+    "google-auth-library": "^9.4.1",
+    "open": "^10.0.0"
   },
   "keywords": [
     "slack",

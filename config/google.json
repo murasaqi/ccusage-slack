@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/15gxHiWndzZaZry_Z9p0vLKQyskNM6MqYgp6NCczeKnY/edit?gid=0#gid=0",
+  "displayRanking": false,
+  "syncInterval": 60000,
+  "features": {
+    "monthlyHistory": true,
+    "teamRanking": true,
+    "autoSetup": true
+  },
+  "display": {
+    "showRankingInStatus": true,
+    "rankingFormat": "{emoji}{rank}位/{total}人",
+    "emojis": {
+      "1": "🏆",
+      "2": "🥈",
+      "3": "🥉",
+      "default": "📊"
+    }
+  }
+}

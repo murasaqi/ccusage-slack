@@ -122,6 +122,103 @@ npm run message:use gacha-results/tech_N_2025-06-26
 - Slack: `users.profile:write`
 - システム: ccusageコマンドの実行権限
 
+## 📊 Google Sheets連携機能（複数マシン・チーム利用対応）
+
+複数のマシンでClaude Codeを利用している場合や、チームで利用状況を共有したい場合に、Google Spreadsheetsで集計・可視化できる機能です。
+
+### 主な機能
+
+- **複数マシンの利用量集計**: 同じユーザーが複数のマシンで利用している場合、自動的に合計値を算出
+- **チームランキング**: 組織全体の利用状況をランキング形式で表示
+- **月次履歴管理**: 過去の利用推移を自動保存
+- **Slackステータス連携**: 自分の順位も含めて表示（例: "🥈2位/10人"）
+
+### セットアップ手順
+
+1. **Google Cloud Projectの準備**
+   - [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作成
+   - Google Sheets APIを有効化
+   - OAuth 2.0認証情報を作成（詳細は[セットアップガイド](docs/google-sheets-setup.md)参照）
+
+2. **認証情報の設定**
+   ```bash
+   # .envファイルに追加
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
+
+3. **Google Spreadsheetを作成**
+   - 新規スプレッドシートを作成
+   - チームメンバーに「編集者」権限で共有
+   - スプレッドシートのURLをコピー
+
+4. **初期設定を実行**
+   ```bash
+   npm install
+   npm run setup:google
+   ```
+   - ブラウザが開いてGoogle認証を要求
+   - スプレッドシートのURLを入力
+   - 表示名（オプション）とランキング表示設定を選択
+
+5. **通常起動**
+   ```bash
+   npm start
+   ```
+   - 自動的にGoogle Sheetsと連携
+   - 複数マシンの場合は合計値がSlackに表示
+   - ランキング情報も追加表示
+
+### ランキング確認
+
+```bash
+npm run ranking
+```
+
+出力例:
+```
+📊 Claude Usage Ranking
+
+📅 2024年6月の利用状況
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏆 1位: 山田さん - $450.00
+🥈 2位: 田中さん - $350.00 ← あなた
+🥉 3位: 佐藤さん - $280.00
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+合計 10 人が利用中
+
+📈 あなたの統計:
+  • 現在の順位: 2位 / 10人
+  • 今月の利用額: $350.00
+  • 利用マシン数: 3台
+  • Claude Maxからの節約額: $150.00
+```
+
+### 環境変数（Google連携用）
+
+```bash
+# .env (オプション)
+GOOGLE_SHEETS_URL=<スプレッドシートのURL>
+DISPLAY_NAME=<表示名（未設定時はSlackから取得）>
+```
+
+### Google Sheetsの構造
+
+自動的に以下の3つのシートが作成されます：
+
+1. **Current Usage**: 各マシンの現在の利用状況
+2. **Monthly History**: 月次の履歴データ
+3. **User Summary**: ユーザー別の集計とランキング
+
+### プライバシー設定
+
+`config/google.json`で表示設定をカスタマイズ可能：
+- ランキング表示のON/OFF
+- Slackステータスへの順位表示
+- 表示フォーマットのカスタマイズ
+
 ## 🎰 メッセージガチャ機能
 
 message.jsonの内容をガチャ感覚で自動生成できる機能です。カテゴリ別に様々なテーマのメッセージセットを生成し、お気に入りを選んで使用できます。

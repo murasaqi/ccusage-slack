@@ -8,6 +8,11 @@ const fs = require('fs');
 const CLAUDE_MAX_COST = 200; // $200 Claude Max subscription
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 
+// Google Sheets integration
+const googleSync = require('../google').getInstance();
+let googleConfig = {};
+let googleInitialized = false;
+
 // Load Slack configuration
 let slackConfig = {};
 try {
@@ -68,6 +73,29 @@ function loadMessages() {
 if (!loadMessages()) {
   process.exit(1);
 }
+
+// Load Google configuration
+async function loadGoogleConfig() {
+  try {
+    const googleConfigPath = path.join(__dirname, '../../config/google.json');
+    googleConfig = JSON.parse(fs.readFileSync(googleConfigPath, 'utf8'));
+    console.log('✅ Loaded Google Sheets configuration');
+    
+    // Initialize Google Sheets if enabled
+    if (googleConfig.enabled && !googleInitialized) {
+      googleInitialized = await googleSync.initialize();
+      if (googleInitialized) {
+        console.log('✅ Google Sheets sync enabled');
+      }
+    }
+  } catch (error) {
+    console.log('⚠️  Google Sheets sync not configured');
+    googleConfig = { enabled: false };
+  }
+}
+
+// Load Google config on startup
+loadGoogleConfig();
 
 function getSavingsComparison(savings) {
   const comparisons = messagesConfig.comparisons;
@@ -149,7 +177,7 @@ function replaceTemplate(template, replacements) {
   return result;
 }
 
-async function updateSlackProfile(totalCost, month) {
+async function updateSlackProfile(totalCost, month, rankingInfo = null) {
   const savings = totalCost - CLAUDE_MAX_COST;
   
   // Get thresholds from config
@@ -177,6 +205,26 @@ async function updateSlackProfile(totalCost, month) {
       message: getLowUsageMessage(totalCost, savings),
       totalCost: `$${totalCost.toFixed(2)}`
     });
+  }
+  
+  // Add ranking info if available and enabled
+  if (rankingInfo && googleConfig.displayRanking && googleConfig.display && googleConfig.display.showRankingInStatus) {
+    const rank = rankingInfo.rank;
+    const total = rankingInfo.totalUsers;
+    
+    if (rank && total) {
+      const emoji = rank === 1 ? googleConfig.display.emojis['1'] :
+                    rank === 2 ? googleConfig.display.emojis['2'] :
+                    rank === 3 ? googleConfig.display.emojis['3'] :
+                    googleConfig.display.emojis.default;
+      
+      const rankingText = googleConfig.display.rankingFormat
+        .replace('{emoji}', emoji)
+        .replace('{rank}', rank)
+        .replace('{total}', total);
+      
+      title += ` ${rankingText}`;
+    }
   }
   
   try {
@@ -218,13 +266,47 @@ async function updateCostInfo() {
       }
     }
     
+    // Reload Google config if needed
+    await loadGoogleConfig();
+    
     console.log('🔄 Fetching Claude usage data...');
     const data = await getCCUsage();
-    const { totalCost, month } = getLatestMonthCost(data);
+    const { totalCost: localCost, month } = getLatestMonthCost(data);
     
-    console.log(`📊 Latest month (${month}): $${totalCost.toFixed(2)}`);
+    console.log(`📊 Local usage (${month}): $${localCost.toFixed(2)}`);
     
-    await updateSlackProfile(totalCost, month);
+    // Google Sheets sync
+    let totalCost = localCost;
+    let rankingInfo = null;
+    
+    if (googleConfig.enabled && googleInitialized) {
+      try {
+        // Sync local data to Google Sheets
+        await googleSync.syncUsageData(data);
+        
+        // Get aggregated data from all machines
+        const aggregatedData = await googleSync.getAggregatedUsage();
+        
+        if (aggregatedData) {
+          totalCost = aggregatedData.totalCost;
+          rankingInfo = aggregatedData.ranking;
+          
+          console.log(`📊 Total usage across ${aggregatedData.machines} machine(s): $${totalCost.toFixed(2)}`);
+          
+          if (rankingInfo && rankingInfo.rank) {
+            console.log(`🏆 Ranking: ${rankingInfo.rank}/${rankingInfo.totalUsers}`);
+          }
+          
+          // Update user summary
+          await googleSync.updateUserSummary();
+        }
+      } catch (error) {
+        console.error('⚠️  Google Sheets sync error:', error.message);
+        // Fall back to local data
+      }
+    }
+    
+    await updateSlackProfile(totalCost, month, rankingInfo);
   } catch (error) {
     console.error('❌ Error updating cost info:', error.message);
   }
